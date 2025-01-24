@@ -39,23 +39,21 @@ def process_file(input_file, output_file):
         end_index = match.end()
         logging.info(f"Demo message found at index {start_index}-{end_index}.")
 
-        # Find the preceding STX symbol
+        # Find the preceding STX for the packet containing demo_message
         stx_index = content.rfind(STX, 0, start_index)
         if stx_index == -1:
             logging.error("No preceding STX found.")
             return
 
-        logging.info(f"Found STX at index {stx_index}.")
-
-        # Find the first ETX symbol after the demo_message
+        # Find the ETX that follows the demo_message
         etx_index = content.find(ETX, end_index)
         if etx_index == -1:
             logging.error("No corresponding ETX found.")
             return
 
-        logging.info(f"Found ETX at index {etx_index}.")
+        logging.info(f"Found STX at index {stx_index}, ETX at index {etx_index}.")
 
-        # Extract the command block from STX to ETX
+        # Extract the full command block (from STX to ETX)
         command_block = content[stx_index + len(STX):etx_index]
         logging.debug(f"Original command block: {command_block}")
 
@@ -63,17 +61,21 @@ def process_file(input_file, output_file):
         new_command_block = command_block.replace(demo_message, '')
         logging.debug(f"New command block after removing demo_message: {new_command_block}")
 
-        # Compute new checksum
+        # Compute new checksum for the updated command block
         new_checksum = compute_checksum(new_command_block)
 
-        # Build updated content
+        # Identify the existing checksum and replace it
+        checksum_start_index = etx_index + len(ETX)
+        checksum_end_index = checksum_start_index + CHECKSUM_LENGTH
+        old_checksum = content[checksum_start_index:checksum_end_index]
+
+        logging.info(f"Old checksum: {old_checksum}, New checksum: {new_checksum}")
+
+        # Update content by replacing the checksum
         cleaned_content = (
-            content[:stx_index + len(STX)] + 
-            new_command_block + 
-            ETX + 
-            new_checksum + 
-            EOT + 
-            content[etx_index + len(ETX) + CHECKSUM_LENGTH + len(EOT):]
+            content[:checksum_start_index] +
+            new_checksum +
+            content[checksum_end_index:]
         )
 
         # Write the updated content to the output file
