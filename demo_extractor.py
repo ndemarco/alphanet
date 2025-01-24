@@ -1,4 +1,9 @@
 import re
+import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
 
 # Constants
 STX = "]\""  # ASCII Printable Start of Text
@@ -13,56 +18,81 @@ demo_message = r'''];"bThank You];&n2for using the]-AlphaNET]-demo]-program]; o]
 def compute_checksum(data):
     """Computes a 16-bit checksum for given data string."""
     checksum = sum(ord(char) for char in data) & 0xFFFF  # 16-bit summation
-    return f"{checksum:04X}"  # Format checksum as four ASCII uppercase hex digits
+    formatted_checksum = f"{checksum:04X}"  # Format checksum as four ASCII uppercase hex digits
+    logging.debug(f"Computed checksum: {formatted_checksum} for data: {data}")
+    return formatted_checksum
 
 # Function to process the file and remove demo_message
-def process_file(file_path):
-    with open(file_path, 'r') as file:
-        content = file.read()
+def process_file(input_file, output_file):
+    try:
+        with open(input_file, 'r') as file:
+            content = file.read()
+            logging.info(f"Read {len(content)} bytes from input file.")
 
-    # Search for the demo_message within the content
-    match = re.search(re.escape(demo_message), content)
-    if match:
+        # Search for the demo_message within the content
+        match = re.search(re.escape(demo_message), content)
+        if not match:
+            logging.warning("Demo message not found in the file.")
+            return
+
         start_index = match.start()
         end_index = match.end()
+        logging.info(f"Demo message found at index {start_index}-{end_index}.")
 
         # Find the preceding STX symbol
         stx_index = content.rfind(STX, 0, start_index)
         if stx_index == -1:
-            print("No preceding STX found.")
+            logging.error("No preceding STX found.")
             return
+
+        logging.info(f"Found STX at index {stx_index}.")
 
         # Find the first ETX symbol after the demo_message
         etx_index = content.find(ETX, end_index)
         if etx_index == -1:
-            print("No corresponding ETX found.")
+            logging.error("No corresponding ETX found.")
             return
+
+        logging.info(f"Found ETX at index {etx_index}.")
 
         # Extract the command block from STX to ETX
         command_block = content[stx_index + len(STX):etx_index]
-        
+        logging.debug(f"Original command block: {command_block}")
+
         # Remove the demo message from the command block
         new_command_block = command_block.replace(demo_message, '')
+        logging.debug(f"New command block after removing demo_message: {new_command_block}")
 
         # Compute new checksum
         new_checksum = compute_checksum(new_command_block)
 
-        # Replace the old checksum with the new one
-        checksum_start_index = etx_index + len(ETX)
-        checksum_end_index = checksum_start_index + CHECKSUM_LENGTH
-        content = (content[:checksum_start_index] +
-                   new_checksum +
-                   content[checksum_end_index:])
+        # Build updated content
+        cleaned_content = (
+            content[:stx_index + len(STX)] + 
+            new_command_block + 
+            ETX + 
+            new_checksum + 
+            EOT + 
+            content[etx_index + len(ETX) + CHECKSUM_LENGTH + len(EOT):]
+        )
 
-        # Write the updated content back to the file
-        with open(file_path, 'w') as file:
-            file.write(content)
+        # Write the updated content to the output file
+        with open(output_file, 'w') as file:
+            file.write(cleaned_content)
+            logging.info(f"Updated content written to {output_file}")
 
-        print("Demo message removed and checksum updated successfully.")
+        logging.info("Demo message removed and checksum updated successfully.")
 
-    else:
-        print("Demo message not found in the file.")
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
 
 # Usage example
-file_path = "test_message.txt"
-process_file(file_path)
+input_file = "test_message.txt"
+output_file = "clean_test_message.txt"
+
+# Remove output file if it exists
+if os.path.exists(output_file):
+    os.remove(output_file)
+    logging.info(f"Existing output file {output_file} removed.")
+
+process_file(input_file, output_file)
